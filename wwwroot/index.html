@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Customer/Lead Image Upload Demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; margin: 24px; }
+    .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+    .gallery { display:grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap:12px; }
+    .card { border:1px solid #ddd; border-radius:8px; padding:8px; }
+    .card img { width:100%; height:120px; object-fit:cover; border-radius:4px; }
+    .pill { padding:4px 8px; border:1px solid #ccc; border-radius:999px; font-size:12px; }
+    button { padding:8px 12px; border-radius:8px; border:1px solid #333; background:#111; color:#fff; cursor:pointer;}
+    button:disabled { opacity:.4; cursor:not-allowed; }
+    .carousel { display:flex; overflow-x:auto; gap:12px; padding-bottom:8px; border-bottom:1px dashed #ccc; margin-bottom:16px; }
+    .carousel img { height:120px; border-radius:6px; }
+    .muted { color:#666; font-size:12px; }
+  </style>
+</head>
+<body>
+  <h2>Image Upload (Max 10 per owner)</h2>
+  <div class="row">
+    <label>Owner Type:
+      <select id="ownerType"><option value="customer">customer</option><option value="lead">lead</option></select>
+    </label>
+    <label>Owner Id: <input id="ownerId" type="number" value="1" min="1" style="width:80px"></label>
+    <button id="seed">Create Demo Owner</button>
+    <span class="muted">Tip: Click once for chosen type & id.</span>
+  </div>
+  <div class="row">
+    <input id="files" type="file" accept="image/*" multiple />
+    <button id="upload">Upload</button>
+    <span id="status" class="pill">idle</span>
+  </div>
+  <div class="row"><button id="refresh">Refresh List</button><span class="muted">Deleting frees a slot.</span></div>
+  <div id="carousel" class="carousel"></div>
+  <div id="gallery" class="gallery"></div>
+<script>
+const byId=(id)=>document.getElementById(id);
+async function createOwner(){
+  const t=byId('ownerType').value,id=Number(byId('ownerId').value);
+  const body={id:id,name:t+' #'+id};
+  const url=t==='customer'?'/api/customers':'/api/leads';
+  await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  alert('Owner ready (or existed).');
+}
+async function upload(){
+  const t=byId('ownerType').value,id=Number(byId('ownerId').value);
+  const fd=new FormData(); for(const f of byId('files').files) fd.append('files',f);
+  byId('status').textContent='uploading...';
+  const r=await fetch(`/api/${t}/${id}/images`,{method:'POST',body:fd});
+  const d=await r.json().catch(()=>({}));
+  byId('status').textContent=r.ok?`added:${d.added}, left:${d.remainingSlots}`:'error';
+  refresh(); byId('files').value='';
+}
+async function refresh(){
+  const t=byId('ownerType').value,id=Number(byId('ownerId').value);
+  const r=await fetch(`/api/${t}/${id}/images`); const items=r.ok?await r.json():[];
+  byId('carousel').innerHTML=''; for(const it of items){const img=document.createElement('img');img.src=`data:image/*;base64,${it.base64Data}`;byId('carousel').appendChild(img);}
+  const g=byId('gallery'); g.innerHTML=''; for(const it of items){const card=document.createElement('div');card.className='card';card.innerHTML=`<img src="data:image/*;base64,${it.base64Data}"><div class='row'><span class='pill'>slot ${it.sequenceNo}</span><button data-id='${it.id}'>Delete</button></div>`;g.appendChild(card);}
+  g.querySelectorAll('button[data-id]').forEach(btn=>btn.addEventListener('click',async e=>{await fetch(`/api/images/${e.target.getAttribute('data-id')}`,{method:'DELETE'});refresh();}));
+}
+byId('seed').addEventListener('click',createOwner); byId('upload').addEventListener('click',upload); byId('refresh').addEventListener('click',refresh); refresh();
+</script>
+</body>
+</html>
